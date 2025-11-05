@@ -1,6 +1,17 @@
 #include <clang-c/Index.h>
-#include <iostream>
+#include <print>
 #include <string>
+#include <vector>
+
+struct MemberInfo
+{
+    std::string name;
+    bool useToString = false;
+
+    MemberInfo(const std::string& name, bool useToString = false)
+        :name(name), useToString(useToString)
+    {}
+};
 
 // Convert CXString to std::string safely
 std::string toString(CXString str) {
@@ -9,37 +20,16 @@ std::string toString(CXString str) {
     return result;
 }
 
-// Helper: check if a struct has a member function named "toString"
-// bool hasToStringMethod(CXCursor structCursor) {
-//     bool found = false;
-
-//     clang_visitChildren(
-//         structCursor,
-//         [](CXCursor c, CXCursor, CXClientData data) {
-//             CXCursorKind kind = clang_getCursorKind(c);
-//             if (kind == CXCursor_CXXMethod) {
-//                 std::string name = toString(clang_getCursorSpelling(c));
-//                 if (name == "toString") {
-//                     bool *flag = static_cast<bool *>(data);
-//                     *flag = true;
-//                     return CXChildVisit_Break;
-//                 }
-//             }
-//             return CXChildVisit_Continue;
-//         },
-//         &found);
-
-//     return found;
-// }
-
 // Main visitor
 CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
     CXCursorKind kind = clang_getCursorKind(cursor);
+    if(!clang_Location_isFromMainFile(clang_getCursorLocation(cursor)))
+        return CXChildVisit_Continue;
 
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
         std::string structName = toString(clang_getCursorSpelling(cursor));
         if (structName.empty())
-            structName = "<anonymous>";
+            return CXChildVisit_Continue;
 
         // Skip forward declarations (incomplete types)
         CXType structType = clang_getCursorType(cursor);
@@ -47,26 +37,58 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
             return CXChildVisit_Continue;
 
         // Count fields
-        int memberCount = 0;
+        std::vector<MemberInfo> memberInfos;
+
         clang_visitChildren(
             cursor,
             [](CXCursor c, CXCursor, CXClientData data) {
-                if (clang_getCursorKind(c) == CXCursor_FieldDecl) {
-                    int *count = static_cast<int *>(data);
-                    (*count)++;
+                auto *mInfos = static_cast<std::vector<MemberInfo> *>(data);
+                CXCursorKind kind = clang_getCursorKind(c);
+                CXString spelling = clang_getCursorSpelling(c);
+                switch (kind)
+                {
+                case CXCursor_FieldDecl:
+                {
+                    auto nameOfField = std::string(clang_getCString(spelling));
+                    if(!nameOfField.starts_with('_'))
+                        mInfos->emplace_back(nameOfField);
                 }
+                break;
+                case CXCursor_CXXMethod:
+                {
+                    auto nameOfFunction = std::string(clang_getCString(spelling));
+                    if(nameOfFunction != "toString")
+                        break;
+                    
+                    int argCount = clang_Cursor_getNumArguments(c);
+                    if(argCount != 1)
+                        break;
+                    
+                    CXCursor arg = clang_Cursor_getArgument(c, 0);
+                    CXString argName = clang_getCursorSpelling(arg);
+                    
+                    auto itArgNameMember = std::find_if(mInfos->begin(), mInfos->end(), [&](const MemberInfo& m){ return m.name == std::string(clang_getCString(argName)); });
+                    clang_disposeString(argName);
+                    if(itArgNameMember == mInfos->end())
+                        break;
+                    itArgNameMember->useToString = true;
+                }
+                break;
+                }
+                clang_disposeString(spelling);
+
                 return CXChildVisit_Continue;
             },
-            &memberCount);
+            &memberInfos
+        );
 
-        // Get size
-        long long size = clang_Type_getSizeOf(structType);
-        if (size < 0) size = 0;
 
-        std::cout << "Struct: " << structName << "\n";
-        std::cout << "  Size: " << size << " bytes\n";
-        std::cout << "  Members: " << memberCount << "\n";
-        std::cout << "----------------------\n";
+        std::println("Struct: {}", structName);
+        for(const auto& m: memberInfos)
+        {
+            std::print("  {}-{}, ", m.name, m.useToString);
+        }
+        std::println("\n----------------------");
     }
 
     return CXChildVisit_Recurse;
@@ -74,7 +96,7 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <source.cpp>\n";
+        std::println("Usage: {} <source.cpp>", argv[0]);
         return 1;
     }
 
@@ -88,7 +110,7 @@ int main(int argc, char **argv) {
         CXTranslationUnit_None);
 
     if (!tu) {
-        std::cerr << "Failed to parse translation unit: " << filename << "\n";
+        std::println("Failed to parse translation unit: {}", filename);
         clang_disposeIndex(index);
         return 1;
     }
