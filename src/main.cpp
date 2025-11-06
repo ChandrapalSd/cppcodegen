@@ -13,12 +13,31 @@ struct MemberInfo
     {}
 };
 
+
 // Convert CXString to std::string safely
 std::string toString(CXString str) {
     std::string result = clang_getCString(str);
     clang_disposeString(str);
     return result;
 }
+
+std::string getQualifiedName(CXCursor cursor) {
+    std::string name = toString(clang_getCursorSpelling(cursor));
+    CXCursor parent = clang_getCursorSemanticParent(cursor);
+
+    while (!clang_Cursor_isNull(parent) &&
+           clang_getCursorKind(parent) != CXCursor_TranslationUnit) {
+
+        std::string parentName = toString(clang_getCursorSpelling(parent));
+        if (!parentName.empty())
+            name = parentName + "::" + name;
+
+        parent = clang_getCursorSemanticParent(parent);
+    }
+
+    return name;
+}
+
 
 // Main visitor
 CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
@@ -27,7 +46,7 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
         return CXChildVisit_Continue;
 
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
-        std::string structName = toString(clang_getCursorSpelling(cursor));
+        std::string structName = getQualifiedName(cursor);//toString(clang_getCursorSpelling(cursor));
         if (structName.empty())
             return CXChildVisit_Continue;
 
