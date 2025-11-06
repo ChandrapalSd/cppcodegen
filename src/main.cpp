@@ -84,11 +84,33 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
 
 
         std::println("Struct: {}", structName);
+
+        const std::string FORMAT_STR = "{}";
+        const std::string COMMA = ",";
+        const std::string OPEN_CURLY = "{";
+        const std::string CLOSE_CURLY = "}";
+    
+        std::println(R"(template <>)");
+        std::println(R"(struct fmt::formatter<{}> {})", structName, OPEN_CURLY);
+        std::println(R"(constexpr auto parse(fmt::format_parse_context& ctx) {}return ctx.begin();{})", OPEN_CURLY, CLOSE_CURLY);
+        std::println(R"(auto format(const {}& s, fmt::format_context& ctx) const {})", structName, OPEN_CURLY);
+        std::println(R"(return fmt::format_to(ctx.out())");
+
+        std::println(R"("{} ")", OPEN_CURLY);
         for(const auto& m: memberInfos)
         {
-            std::print("  {}-{}, ", m.name, m.useToString);
+            std::println(R"("{} = {}{} ")", m.name, FORMAT_STR, &m != &memberInfos.back() ? COMMA : "");
         }
-        std::println("\n----------------------");
+        std::println(R"("{}",)", CLOSE_CURLY);
+
+        for(const auto& m: memberInfos)
+        {
+            std::println(R"(s.{}{})", m.name, &m != &memberInfos.back() ? COMMA : "");
+        }
+        std::println(");");
+        std::println("{}", CLOSE_CURLY);
+        std::println("{};", CLOSE_CURLY);
+        std::println("//-----------------------------------");
     }
 
     return CXChildVisit_Recurse;
