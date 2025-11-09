@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    std::println("// [auto generated]");
+    std::println("// [auto generated] - Manual changes will be overwritten on next run");
 
     const char *filename = argv[1];
     CXIndex index = clang_createIndex(0, 0);
