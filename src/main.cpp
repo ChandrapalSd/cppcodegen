@@ -45,6 +45,14 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
     if(!clang_Location_isFromMainFile(clang_getCursorLocation(cursor)))
         return CXChildVisit_Continue;
 
+    
+    const std::string FORMAT_STR = "{}";
+    const std::string COMMA = ",";
+    const std::string DOUBLE_QUOTE = "\"";
+    const std::string OPEN_CURLY = "{";
+    const std::string CLOSE_CURLY = "}";
+    const std::string INDENT = "    ";
+
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
         std::string structName = getQualifiedName(cursor);//toString(clang_getCursorSpelling(cursor));
         if (structName.empty())
@@ -55,7 +63,6 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
         if (clang_isInvalid(clang_getCursorKind(cursor)) || clang_Type_getSizeOf(structType) < 0)
             return CXChildVisit_Continue;
 
-        // Count fields
         std::vector<MemberInfo> memberInfos;
 
         clang_visitChildren(
@@ -101,37 +108,73 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
             &memberInfos
         );
 
-
-        std::println("Struct: {}", structName);
-
-        const std::string FORMAT_STR = "{}";
-        const std::string COMMA = ",";
-        const std::string OPEN_CURLY = "{";
-        const std::string CLOSE_CURLY = "}";
-    
         std::println(R"(template <>)");
         std::println(R"(struct fmt::formatter<{}> {})", structName, OPEN_CURLY);
-        std::println(R"(constexpr auto parse(fmt::format_parse_context& ctx) {}return ctx.begin();{})", OPEN_CURLY, CLOSE_CURLY);
-        std::println(R"(auto format(const {}& s, fmt::format_context& ctx) const {})", structName, OPEN_CURLY);
-        std::println(R"(return fmt::format_to(ctx.out())");
+        std::println(R"({}constexpr auto parse(fmt::format_parse_context& ctx) {}return ctx.begin();{})", INDENT, OPEN_CURLY, CLOSE_CURLY);
+        std::println(R"({}auto format(const {}& s, fmt::format_context& ctx) const {})", INDENT, structName, OPEN_CURLY);
+        std::println(R"({}return fmt::format_to(ctx.out(),)", INDENT+INDENT);
 
-        std::println(R"("{} ")", OPEN_CURLY);
+        std::println(R"({}"{} ")", INDENT+INDENT+INDENT, OPEN_CURLY);
         for(const auto& m: memberInfos)
         {
-            std::println(R"("{} = {}{} ")", m.name, FORMAT_STR, &m != &memberInfos.back() ? COMMA : "");
+            std::println(R"({}"{} = {}{} ")", INDENT+INDENT+INDENT, m.name, FORMAT_STR, &m != &memberInfos.back() ? COMMA : "");
         }
-        std::println(R"("{}",)", CLOSE_CURLY);
+        std::println(R"({}"{}",)", INDENT+INDENT+INDENT, CLOSE_CURLY);
 
         for(const auto& m: memberInfos)
         {
-            std::println(R"(s.{}{})", m.name, &m != &memberInfos.back() ? COMMA : "");
+            std::println(R"({}s.{}{})", INDENT+INDENT+INDENT, m.useToString ? std::format("toString(&{}::{})", structName, m.name) : m.name , &m != &memberInfos.back() ? COMMA : "");
         }
-        std::println(");");
-        std::println("{}", CLOSE_CURLY);
-        std::println("{};", CLOSE_CURLY);
-        std::println("//-----------------------------------");
+        std::println("{});", INDENT+INDENT);
+        std::println("{}{}", INDENT, CLOSE_CURLY);
+        std::println("{};\n", CLOSE_CURLY);
     }
+    else if(kind == CXCursor_EnumDecl)
+    {
+        // CXString spelling = clang_getCursorSpelling(cursor);
+        // auto enumName = std::string(clang_getCString(spelling));
+        auto enumName = getQualifiedName(cursor);
+        
+        std::vector<std::string> enumConstantInfos;
 
+        std::println(R"(template <>)");
+        std::println(R"(struct fmt::formatter<{}> : fmt::formatter<std::string_view> {})", enumName, OPEN_CURLY);
+        std::println(R"({}auto format({} e, fmt::format_context& ctx) const {})", INDENT, enumName, OPEN_CURLY);
+        std::println(R"({}std::string result;)", INDENT+INDENT);
+        std::println(R"({}switch (e) {})", INDENT+INDENT, OPEN_CURLY);
+
+        clang_visitChildren(
+            cursor,
+            [](CXCursor c, CXCursor, CXClientData data) {
+                auto enumConstantInfos = static_cast<std::vector<std::string> *>(data);
+                auto *mInfos = static_cast<std::vector<MemberInfo> *>(data);
+                CXCursorKind kind = clang_getCursorKind(c);
+                CXString cxSpellingConstant = clang_getCursorSpelling(c);
+                const auto enumConstantName = clang_getCString(cxSpellingConstant);
+                enumConstantInfos->push_back(enumConstantName);
+
+                clang_disposeString(cxSpellingConstant);
+                return CXChildVisit_Continue;
+            },
+            &enumConstantInfos
+        );
+
+        for(const auto& enumConstantName : enumConstantInfos)
+        {
+            std::println(R"({}case {}::{} : result = "{}" ; break;)", INDENT+INDENT+INDENT, enumName, enumConstantName, enumConstantName);
+        }
+        std::println(R"({}default: result = "Unknown {}"; break;)", INDENT+INDENT+INDENT, enumName);
+        std::println(R"({}{})", INDENT+INDENT, CLOSE_CURLY);
+        std::println(R"({}return fmt::formatter<std::string_view>::format()", INDENT+INDENT);
+        std::println(R"({}fmt::format("{} ({}){}, result, static_cast<std::underlying_type_t<{}>>(e)),)", INDENT+INDENT, FORMAT_STR, FORMAT_STR, DOUBLE_QUOTE, enumName);
+        std::println(R"({}ctx)", INDENT+INDENT);
+        std::println(R"({});)", INDENT+INDENT);
+        std::println(R"({}{})", INDENT, CLOSE_CURLY);
+        std::println(R"({};)", CLOSE_CURLY);
+        std::print("\n\n");
+
+        // clang_disposeString(spelling);
+    }
     return CXChildVisit_Recurse;
 }
 
