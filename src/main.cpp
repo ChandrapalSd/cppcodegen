@@ -184,6 +184,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    std::println("// [auto generated]");
+
     const char *filename = argv[1];
     CXIndex index = clang_createIndex(0, 0);
 
