@@ -51,6 +51,8 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
     const std::string DOUBLE_QUOTE = "\"";
     const std::string OPEN_CURLY = "{";
     const std::string CLOSE_CURLY = "}";
+    const std::string D_OPEN_CURLY = "{{";
+    const std::string D_CLOSE_CURLY = "}}";
     const std::string INDENT = "    ";
 
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
@@ -114,12 +116,12 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
         std::println(R"({}auto format(const {}& s, fmt::format_context& ctx) const {})", INDENT, structName, OPEN_CURLY);
         std::println(R"({}return fmt::format_to(ctx.out(),)", INDENT+INDENT);
 
-        std::println(R"({}"{} ")", INDENT+INDENT+INDENT, OPEN_CURLY);
+        std::println(R"({}"{} ")", INDENT+INDENT+INDENT, D_OPEN_CURLY);
         for(const auto& m: memberInfos)
         {
             std::println(R"({}"{} = {}{} ")", INDENT+INDENT+INDENT, m.name, FORMAT_STR, &m != &memberInfos.back() ? COMMA : "");
         }
-        std::println(R"({}"{}",)", INDENT+INDENT+INDENT, CLOSE_CURLY);
+        std::println(R"({}"{}",)", INDENT+INDENT+INDENT, D_CLOSE_CURLY);
 
         for(const auto& m: memberInfos)
         {
