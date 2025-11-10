@@ -168,8 +168,8 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
         std::println(R"({}default: result = "Unknown {}"; break;)", INDENT+INDENT+INDENT, enumName);
         std::println(R"({}{})", INDENT+INDENT, CLOSE_CURLY);
         std::println(R"({}return fmt::formatter<std::string_view>::format()", INDENT+INDENT);
-        std::println(R"({}fmt::format("{} ({}){}, result, static_cast<std::underlying_type_t<{}>>(e)),)", INDENT+INDENT, FORMAT_STR, FORMAT_STR, DOUBLE_QUOTE, enumName);
-        std::println(R"({}ctx)", INDENT+INDENT);
+        std::println(R"({}fmt::format("{} ({}){}, result, static_cast<std::underlying_type_t<{}>>(e)),)", INDENT+INDENT+INDENT, FORMAT_STR, FORMAT_STR, DOUBLE_QUOTE, enumName);
+        std::println(R"({}ctx)", INDENT+INDENT+INDENT);
         std::println(R"({});)", INDENT+INDENT);
         std::println(R"({}{})", INDENT, CLOSE_CURLY);
         std::println(R"({};)", CLOSE_CURLY);
