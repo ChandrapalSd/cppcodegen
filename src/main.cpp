@@ -2,14 +2,16 @@
 #include <print>
 #include <string>
 #include <vector>
+#include <regex>
 
 struct MemberInfo
 {
     std::string name;
+    std::string type;
     bool useToString = false;
 
-    MemberInfo(const std::string& name, bool useToString = false)
-        :name(name), useToString(useToString)
+    MemberInfo(const std::string& name, const std::string& type, bool useToString = false)
+        :name(name), type(type), useToString(useToString)
     {}
 };
 
@@ -54,6 +56,7 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
     const std::string D_OPEN_CURLY = "{{";
     const std::string D_CLOSE_CURLY = "}}";
     const std::string INDENT = "    ";
+    const std::regex stringPattern("char\\[.*\\]");
 
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
         std::string structName = getQualifiedName(cursor);//toString(clang_getCursorSpelling(cursor));
@@ -78,8 +81,14 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
                 case CXCursor_FieldDecl:
                 {
                     auto nameOfField = std::string(clang_getCString(spelling));
-                    if(!nameOfField.starts_with('_'))
-                        mInfos->emplace_back(nameOfField);
+                    if(nameOfField.starts_with('_'))
+                        break;
+                    
+                    CXType fieldType = clang_getCursorType(c);
+                    CXString typeSpelling = clang_getTypeSpelling(fieldType);
+                    mInfos->emplace_back(nameOfField, clang_getCString(typeSpelling));
+
+                    clang_disposeString(typeSpelling);
                 }
                 break;
                 case CXCursor_CXXMethod:
@@ -119,13 +128,22 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
         std::println(R"({}"{} ")", INDENT+INDENT+INDENT, D_OPEN_CURLY);
         for(const auto& m: memberInfos)
         {
-            std::println(R"({}"{} = {}{} ")", INDENT+INDENT+INDENT, m.name, FORMAT_STR, &m != &memberInfos.back() ? COMMA : "");
+            std::string formatString = FORMAT_STR;
+            if(std::regex_match(m.type, stringPattern))
+                formatString = std::format("\\\"{}\\\"", formatString);
+            std::println(R"({}"{} = {}{} ")", INDENT+INDENT+INDENT, m.name, formatString, &m != &memberInfos.back() ? COMMA : "");
         }
         std::println(R"({}"{}",)", INDENT+INDENT+INDENT, D_CLOSE_CURLY);
 
         for(const auto& m: memberInfos)
         {
-            std::println(R"({}s.{}{})", INDENT+INDENT+INDENT, m.useToString ? std::format("toString(&{}::{})", structName, m.name) : m.name , &m != &memberInfos.back() ? COMMA : "");
+            std::string printExpr = "s." + m.name;
+            if(m.useToString)
+                printExpr = std::format("s.toString(&{}::{})", structName, m.name);
+            else if(std::regex_match(m.type, stringPattern))
+                printExpr = std::format("std::string_view({}, {})", printExpr, m.type.substr(std::string{"char["}.size(), m.type.size()-std::string{"char[]"}.size()));
+            
+            std::println(R"({}{}{})", INDENT+INDENT+INDENT, printExpr, &m != &memberInfos.back() ? COMMA : "");
         }
         std::println("{});", INDENT+INDENT);
         std::println("{}{}", INDENT, CLOSE_CURLY);
