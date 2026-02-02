@@ -141,7 +141,7 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData) {
             if(m.useToString)
                 printExpr = std::format("s.toString(&{}::{})", structName, m.name);
             else if(std::regex_match(m.type, stringPattern))
-                printExpr = std::format("std::string_view({}, {})", printExpr, m.type.substr(std::string{"char["}.size(), m.type.size()-std::string{"char[]"}.size()));
+                printExpr = std::format("std::string_view({}, strnlen({}, {}))", printExpr, printExpr, m.type.substr(std::string{"char["}.size(), m.type.size()-std::string{"char[]"}.size()));
             
             std::println(R"({}{}{})", INDENT+INDENT+INDENT, printExpr, &m != &memberInfos.back() ? COMMA : "");
         }
